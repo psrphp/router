@@ -1,0 +1,11 @@
+{
+    "name": "psrphp/router",
+    "description": "router",
+    "type": "library",
+    "license": "GPL-3.0",
+    "autoload": {
+        "psr-4": {
+            "PsrPHP\\Router\\": "src/"
+        }
+    }
+}
