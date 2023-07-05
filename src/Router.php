@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace PsrPHP\Router;
 
+use Exception;
 use LogicException;
+use Psr\Http\Message\ServerRequestInterface;
 
 class Router
 {
@@ -52,8 +54,17 @@ REGEX;
         return $this;
     }
 
-    public function addRoute(array $methods, string $route, $handler, array $middlewares = [], array $params = [], string $name = null): self
-    {
+    public function addRoute(
+        array $methods,
+        string $route,
+        string $handler,
+        array $middlewares = [],
+        array $params = [],
+        string $name = null
+    ): self {
+        if (!is_subclass_of($handler, ServerRequestInterface::class)) {
+            throw new Exception('handler must be instanse of ' . ServerRequestInterface::class);
+        }
         if ($this->currentMiddlewares) {
             array_push($middlewares, ...$this->currentMiddlewares);
         }
@@ -230,10 +241,10 @@ REGEX;
         }
 
         $search = http_build_query($params);
-        return $this->getSiteRoot() . $name . (strlen($search) ? '?' . $search : '');
+        return self::getSiteRoot() . $name . (strlen($search) ? '?' . $search : '');
     }
 
-    public function getSiteRoot(): string
+    public static function getSiteRoot(): string
     {
         $scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
         $host = $port = null;
@@ -267,7 +278,7 @@ REGEX;
     protected function addData(
         string $httpMethod,
         array $routeData,
-        $handler,
+        string $handler,
         array $middlewares = [],
         array $params = [],
         string $name = null
@@ -341,7 +352,7 @@ REGEX;
     private function addStaticRoute(
         string $httpMethod,
         array $routeData,
-        $handler,
+        string $handler,
         array $middlewares = [],
         array $params = [],
         string $name = null
@@ -378,7 +389,7 @@ REGEX;
     private function addVariableRoute(
         string $httpMethod,
         array $routeData,
-        $handler,
+        string $handler,
         array $middlewares = [],
         array $params = [],
         string $name = null
