@@ -79,43 +79,43 @@ REGEX;
         return $this;
     }
 
-    public function dispatch(string $httpMethod, string $uri): Route
+    public function dispatch(string $httpMethod, string $uri): array
     {
         list($staticRouteMap, $varRouteMap) = $this->getData();
 
         if (isset($staticRouteMap[$httpMethod][$uri])) {
             $staticRouteData = $staticRouteMap[$httpMethod][$uri];
-            return new Route(true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']);
+            return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
         }
 
         if (isset($staticRouteMap['*'][$uri])) {
             $staticRouteData = $staticRouteMap['*'][$uri];
-            return new Route(true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']);
+            return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
         }
 
         if ($httpMethod === 'HEAD') {
             if (isset($staticRouteMap['GET'][$uri])) {
                 $staticRouteData = $staticRouteMap['GET'][$uri];
-                return new Route(true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']);
+                return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
             }
         }
 
         if (isset($varRouteMap[$httpMethod])) {
             if ($result = $this->dispatchVariableRoute($varRouteMap[$httpMethod], $uri)) {
-                return new Route(true, true, ...$result);
+                return [true, true, ...$result];
             }
         }
 
         if (isset($varRouteMap['*'])) {
             if ($result = $this->dispatchVariableRoute($varRouteMap['*'], $uri)) {
-                return new Route(true, true, ...$result);
+                return [true, true, ...$result];
             }
         }
 
         if ($httpMethod === 'HEAD') {
             if (isset($varRouteMap['GET'])) {
                 if ($result = $this->dispatchVariableRoute($varRouteMap['GET'], $uri)) {
-                    return new Route(true, true, ...$result);
+                    return [true, true, ...$result];
                 }
             }
         }
@@ -132,7 +132,7 @@ REGEX;
             }
 
             if (isset($uriMap[$uri])) {
-                return new Route(true, false, $uriMap[$uri]['handler'], $uriMap[$uri]['middlewares'], $uriMap[$uri]['params']);
+                return [true, false, $uriMap[$uri]['handler'], $uriMap[$uri]['middlewares'], $uriMap[$uri]['params']];
             }
         }
 
@@ -142,11 +142,11 @@ REGEX;
             }
 
             if ($result = $this->dispatchVariableRoute($routeData, $uri)) {
-                return new Route(true, false, ...$result);
+                return [true, false, ...$result];
             }
         }
 
-        return new Route(false);
+        return [false];
     }
 
     protected function dispatchVariableRoute(array $routeData, string $uri): ?array
