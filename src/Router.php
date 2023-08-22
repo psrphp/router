@@ -6,7 +6,7 @@ namespace PsrPHP\Router;
 
 use Exception;
 use LogicException;
-use Psr\Http\Message\ServerRequestInterface;
+use Psr\Http\Server\RequestHandlerInterface;
 
 class Router
 {
@@ -62,8 +62,8 @@ REGEX;
         array $params = [],
         string $name = null
     ): self {
-        if (!is_subclass_of($handler, ServerRequestInterface::class)) {
-            throw new Exception('handler must be instanse of ' . ServerRequestInterface::class);
+        if (!is_subclass_of($handler, RequestHandlerInterface::class)) {
+            throw new Exception('handler must be instanse of ' . RequestHandlerInterface::class);
         }
         if ($this->currentMiddlewares) {
             array_push($middlewares, ...$this->currentMiddlewares);
