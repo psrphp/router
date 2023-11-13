@@ -4,18 +4,16 @@ declare(strict_types=1);
 
 namespace PsrPHP\Router;
 
-use Exception;
 use LogicException;
-use Psr\Http\Server\RequestHandlerInterface;
 
 class Router
 {
     protected $parser;
     protected $generator;
 
-    protected $currentGroupPrefix;
-    protected $currentMiddlewares;
-    protected $currentParams;
+    protected $currentGroupPrefix = '';
+    protected $currentMiddlewares = [];
+    protected $currentParams = [];
 
     protected $staticRoutes = [];
     protected $methodToRegexToRoutesMap = [];
@@ -30,23 +28,17 @@ class Router
 \}
 REGEX;
 
-    public function __construct($prefix = '', $middlewares = [], $params = [])
+    public function __construct(string $prefix = '')
     {
         $this->currentGroupPrefix = $prefix;
-        $this->currentMiddlewares = $middlewares;
-        $this->currentParams = $params;
     }
 
-    public function addGroup(string $prefix, callable $callback, array $middlewares = [], array $params = []): self
+    public function addGroup(string $prefix, callable $callback): self
     {
         $previousGroupPrefix = $this->currentGroupPrefix;
         $previousMiddlewares = $this->currentMiddlewares;
         $previousParams = $this->currentParams;
         $this->currentGroupPrefix = $previousGroupPrefix . $prefix;
-        if ($middlewares) {
-            array_push($this->currentMiddlewares, ...$middlewares);
-        }
-        $this->currentParams = array_merge($this->currentParams, $params);
         $callback($this);
         $this->currentGroupPrefix = $previousGroupPrefix;
         $this->currentMiddlewares = $previousMiddlewares;
@@ -62,9 +54,6 @@ REGEX;
         array $params = [],
         string $name = null
     ): self {
-        if (!is_subclass_of($handler, RequestHandlerInterface::class)) {
-            throw new Exception('handler must be instanse of ' . RequestHandlerInterface::class);
-        }
         if ($this->currentMiddlewares) {
             array_push($middlewares, ...$this->currentMiddlewares);
         }
@@ -273,6 +262,38 @@ REGEX;
             $site_path = strlen($dir_script) > 1 ? $dir_script : '';
         }
         return $site_base . $site_path;
+    }
+
+    public function pushMiddleware(...$middlewares): self
+    {
+        array_push($this->currentMiddlewares, ...$middlewares);
+        return $this;
+    }
+
+    public function unShiftMiddleware(...$middlewares): self
+    {
+        array_unshift($this->currentMiddlewares, ...$middlewares);
+        return $this;
+    }
+
+    public function popMiddleware()
+    {
+        return array_pop($this->currentMiddlewares);
+    }
+
+    public function shiftMiddleware()
+    {
+        return array_shift($this->currentMiddlewares);
+    }
+
+    public function setParam(string $key, $value): self
+    {
+        if (is_null($value)) {
+            unset($this->currentParams[$key]);
+        } else {
+            $this->currentParams[$key] = $value;
+        }
+        return $this;
     }
 
     protected function addData(
