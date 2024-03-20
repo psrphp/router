@@ -12,7 +12,6 @@ class Router
     protected $generator;
 
     protected $currentGroupPrefix = '';
-    protected $currentMiddlewares = [];
     protected $currentParams = [];
 
     protected $staticRoutes = [];
@@ -33,36 +32,31 @@ REGEX;
         $this->currentGroupPrefix = $prefix;
     }
 
-    public function addGroup(string $prefix, callable $callback): self
+    public function addGroup(string $prefix, callable $callback, array $params = []): self
     {
         $previousGroupPrefix = $this->currentGroupPrefix;
-        $previousMiddlewares = $this->currentMiddlewares;
         $previousParams = $this->currentParams;
         $this->currentGroupPrefix = $previousGroupPrefix . $prefix;
+        $this->currentParams = array_merge($this->currentParams, $params);
         $callback($this);
         $this->currentGroupPrefix = $previousGroupPrefix;
-        $this->currentMiddlewares = $previousMiddlewares;
         $this->currentParams = $previousParams;
         return $this;
     }
 
     public function addRoute(
-        array $methods,
         string $route,
         string $handler,
-        array $middlewares = [],
+        string $name = null,
+        array $methods = ['*'],
         array $params = [],
-        string $name = null
     ): self {
-        if ($this->currentMiddlewares) {
-            array_push($middlewares, ...$this->currentMiddlewares);
-        }
         $route = $this->currentGroupPrefix . $route;
         $routeDatas = $this->parse($route);
         $params = array_merge($params, $this->currentParams);
         foreach ($methods as $method) {
             foreach ($routeDatas as $routeData) {
-                $this->addData($method, $routeData, $handler, $middlewares, $params, $name);
+                $this->addData($method, $routeData, $handler, $params, $name);
             }
         }
         return $this;
@@ -74,18 +68,18 @@ REGEX;
 
         if (isset($staticRouteMap[$httpMethod][$uri])) {
             $staticRouteData = $staticRouteMap[$httpMethod][$uri];
-            return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
+            return [true, true, $staticRouteData['handler'], $staticRouteData['params']];
         }
 
         if (isset($staticRouteMap['*'][$uri])) {
             $staticRouteData = $staticRouteMap['*'][$uri];
-            return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
+            return [true, true, $staticRouteData['handler'], $staticRouteData['params']];
         }
 
         if ($httpMethod === 'HEAD') {
             if (isset($staticRouteMap['GET'][$uri])) {
                 $staticRouteData = $staticRouteMap['GET'][$uri];
-                return [true, true, $staticRouteData['handler'], $staticRouteData['middlewares'], $staticRouteData['params']];
+                return [true, true, $staticRouteData['handler'], $staticRouteData['params']];
             }
         }
 
@@ -121,7 +115,7 @@ REGEX;
             }
 
             if (isset($uriMap[$uri])) {
-                return [true, false, $uriMap[$uri]['handler'], $uriMap[$uri]['middlewares'], $uriMap[$uri]['params']];
+                return [true, false, $uriMap[$uri]['handler'], $uriMap[$uri]['params']];
             }
         }
 
@@ -145,44 +139,47 @@ REGEX;
                 continue;
             }
             $route = $data['routeMap'][count($matches)];
-            $params = [];
+            $vars = [];
             $i = 0;
             foreach ($route['variables'] as $varName) {
-                $params[$varName] = $matches[++$i];
+                $vars[$varName] = $matches[++$i];
             }
-            return [$route['handler'], $route['middlewares'], array_merge($params, $route['params'])];
+            return [$route['handler'], array_merge($vars, $route['params'])];
         }
         return null;
     }
 
-    public function build(string $name, array $params = [], string $methods = 'GET'): string
+    public function build(string $name, array $querys = [], string $methods = 'GET'): string
     {
         list($staticRouteMap, $variableRouteData) = $this->getData();
         $methods = explode('|', strtoupper($methods));
 
-        $check_params = function (array $route_params, array $build_params): bool {
-            foreach ($route_params as $key => $value) {
-                if (isset($build_params[$key]) && ($build_params[$key] != $value)) {
+        $check_querys = function (array $route_querys, array $build_querys): bool {
+            foreach ($route_querys as $key => $value) {
+                if (isset($build_querys[$key]) && ($build_querys[$key] != $value)) {
                     return false;
                 }
             }
             return true;
         };
 
-        foreach ($staticRouteMap as $_method => $routes) {
-            if ($_method != '*' && !in_array($_method, $methods)) {
+        foreach ($staticRouteMap as $method => $routes) {
+            if ($method != '*' && !in_array($method, $methods)) {
                 continue;
             }
             foreach ($routes as $route) {
                 if ($route['name'] != $name) {
                     continue;
                 }
-                if (!$check_params($route['params'], $params)) {
+                if (!$check_querys($route['params'], $querys)) {
                     continue;
                 }
-                $params = array_diff_key($params, $route['params']);
-                $search = http_build_query($params);
-                return $route['routeStr'] . (strlen($search) ? '?' . $search : '');
+                $querys_diff = array_diff_key($querys, $route['params']);
+                if ($querys_diff) {
+                    return $route['routeStr'] . '?' . http_build_query($querys_diff);
+                } else {
+                    return $route['routeStr'];
+                }
             }
         }
 
@@ -207,8 +204,8 @@ REGEX;
             return [$uri, $params];
         };
 
-        foreach ($variableRouteData as $_method => $chunks) {
-            if ($_method != '*' && !in_array($_method, $methods)) {
+        foreach ($variableRouteData as $method => $chunks) {
+            if ($method != '*' && !in_array($method, $methods)) {
                 continue;
             }
             foreach ($chunks as $chunk) {
@@ -216,21 +213,27 @@ REGEX;
                     if ($route['name'] != $name) {
                         continue;
                     }
-                    if (!$check_params($route['params'], $params)) {
+                    if (!$check_querys($route['params'], $querys)) {
                         continue;
                     }
-                    $tmp = $build($route['routeData'], array_diff_key($params, $route['params']));
+                    $tmp = $build($route['routeData'], array_diff_key($querys, $route['params']));
                     if (!is_array($tmp)) {
                         continue;
                     }
-                    $search = http_build_query($tmp[1]);
-                    return $tmp[0] . (strlen($search) ? '?' . $search : '');
+                    if ($tmp[1]) {
+                        return $tmp[0] . '?' . http_build_query($tmp[1]);
+                    } else {
+                        return $tmp[0];
+                    }
                 }
             }
         }
 
-        $search = http_build_query($params);
-        return self::getSiteRoot() . $name . (strlen($search) ? '?' . $search : '');
+        if ($querys) {
+            return self::getSiteRoot() . $name . '?' . http_build_query($querys);
+        } else {
+            return self::getSiteRoot() . $name;
+        }
     }
 
     public static function getSiteRoot(): string
@@ -264,51 +267,18 @@ REGEX;
         return $site_base . $site_path;
     }
 
-    public function pushMiddleware(...$middlewares): self
-    {
-        array_push($this->currentMiddlewares, ...$middlewares);
-        return $this;
-    }
-
-    public function unShiftMiddleware(...$middlewares): self
-    {
-        array_unshift($this->currentMiddlewares, ...$middlewares);
-        return $this;
-    }
-
-    public function popMiddleware()
-    {
-        return array_pop($this->currentMiddlewares);
-    }
-
-    public function shiftMiddleware()
-    {
-        return array_shift($this->currentMiddlewares);
-    }
-
-    public function setParam(string $key, $value): self
-    {
-        if (is_null($value)) {
-            unset($this->currentParams[$key]);
-        } else {
-            $this->currentParams[$key] = $value;
-        }
-        return $this;
-    }
-
     protected function addData(
         string $httpMethod,
         array $routeData,
         string $handler,
-        array $middlewares = [],
         array $params = [],
-        string $name = null
+        string $name = null,
     ) {
         ksort($params);
         if ($this->isStaticRoute($routeData)) {
-            $this->addStaticRoute(strtoupper($httpMethod), $routeData, $handler, $middlewares, $params, $name);
+            $this->addStaticRoute(strtoupper($httpMethod), $routeData, $handler, $params, $name);
         } else {
-            $this->addVariableRoute(strtoupper($httpMethod), $routeData, $handler, $middlewares, $params, $name);
+            $this->addVariableRoute(strtoupper($httpMethod), $routeData, $handler, $params, $name);
         }
     }
 
@@ -374,9 +344,8 @@ REGEX;
         string $httpMethod,
         array $routeData,
         string $handler,
-        array $middlewares = [],
         array $params = [],
-        string $name = null
+        string $name = null,
     ) {
         $routeStr = $routeData[0];
 
@@ -398,10 +367,9 @@ REGEX;
         }
 
         $this->staticRoutes[$httpMethod][$routeStr] = [
-            'name' => $name,
             'handler' => $handler,
-            'middlewares' => $middlewares,
             'params' => $params,
+            'name' => $name,
             'routeStr' => $routeStr,
             'routeData' => $routeData,
         ];
@@ -411,9 +379,8 @@ REGEX;
         string $httpMethod,
         array $routeData,
         string $handler,
-        array $middlewares = [],
         array $params = [],
-        string $name = null
+        string $name = null,
     ) {
         list($regex, $variables) = $this->buildRegexForRoute($routeData);
 
@@ -422,10 +389,9 @@ REGEX;
         }
 
         $this->methodToRegexToRoutesMap[$httpMethod][$regex] = [
-            'name' => $name,
             'handler' => $handler,
-            'middlewares' => $middlewares,
             'params' => $params,
+            'name' => $name,
             'regex' => $regex,
             'routeData' => $routeData,
             'variables' => $variables,
